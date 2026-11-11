@@ -2,14 +2,15 @@
 
 An ESP8266-based prototype for a Toyota Quest-inspired dashboard. It simulates a three-mode shift display on the built-in 128x64 OLED, serves a password-protected dashboard over its own Wi-Fi access point, and drives an addressable RGB strip as a simulated shift light.
 
-**This is a visual simulator only.** It does not connect to an ELM327, read real vehicle telemetry, or control a gearbox, throttle, engine, or other vehicle system. Demo values reset when the board restarts. The boot screen uses Toyota text rather than reproducing the Toyota logo artwork.
+**This is a visual simulator only.** It does not connect to an ELM327, read real vehicle telemetry, or control a gearbox, throttle, engine, or other vehicle system. Demo values reset when the board restarts. The dashboard uses a Toyota text wordmark and a simple `T` monogram, not the official emblem artwork.
 
 ## Features
 
 - ECO, NORMAL, and PERFORMANCE modes, selectable from the web dashboard.
+- Large simulated gear indicator, speed, and RPM shift bar.
 - Simulated RPM, speed, coolant temperature, and throttle.
 - Average and current estimated fuel economy in L/100 km.
-- Simulated total odometer and session distance.
+- Session trip distance (no odometer display).
 - RPM shift-light animation on an 8-pixel addressable RGB strip.
 - Monochrome OLED boot screen and live dashboard.
 - Local Wi-Fi access point and HTTP Basic Authentication.
@@ -18,7 +19,7 @@ An ESP8266-based prototype for a Toyota Quest-inspired dashboard. It simulates a
 
 - ESP8266 NodeMCU / HW-364-style board with SSD1306 128x64 OLED.
 - OLED software-I²C clock: GPIO14; data: GPIO12.
-- WS2812B/NeoPixel-compatible RGB strip: data input to GPIO13 (NodeMCU D7).
+- WS2812B/NeoPixel-compatible GRB strip: data input to GPIO4 (NodeMCU D2). Addressable GRB strips use a single data pin; D0/D1 are not separate color-channel pins.
 - Connect the strip's ground to board ground. Power the strip from an appropriate external supply when required, with a common ground; do not draw high strip current from the ESP8266 3.3V pin.
 - D6/GPIO12 is already occupied by the OLED. D8/GPIO15 affects ESP8266 boot mode and is not used.
 
