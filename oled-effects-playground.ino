@@ -20,6 +20,7 @@ ESP8266WebServer server(80);
 Adafruit_NeoPixel shiftLeds(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
 
 enum class DriveMode : uint8_t { ECO, NORMAL, PERFORMANCE };
+enum class ShiftCue : uint8_t { NONE, UP, DOWN };
 
 DriveMode driveMode = DriveMode::NORMAL;
 uint32_t simulatorStartedAt = 0;
@@ -55,7 +56,7 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
     .instrument:before{content:"";position:absolute;left:0;top:18px;bottom:18px;width:3px;background:var(--red);border-radius:4px}
     .hero{display:grid;grid-template-columns:1.08fr 1fr;gap:14px;align-items:center}.gear-block{display:flex;align-items:center;gap:16px}.gear-number{font-size:clamp(6.5rem,27vw,10rem);font-weight:800;line-height:.78;letter-spacing:-.1em;color:#fff;text-shadow:0 0 35px #fff2}
     .gear-label{writing-mode:vertical-rl;transform:rotate(180deg);font-size:.72rem;letter-spacing:.22em;color:var(--muted)}
-    .stats{border-left:1px solid #414145;padding-left:20px}.speed{font-size:clamp(2.5rem,11vw,4rem);font-weight:720;line-height:1;letter-spacing:-.06em}.unit{color:var(--muted);font-size:.77rem;letter-spacing:.12em}.rpm-line{display:flex;align-items:baseline;gap:8px;margin-top:14px}.rpm{font-size:1.6rem;font-weight:650;font-variant-numeric:tabular-nums}.shift-state{min-height:1.2em;margin-top:2px;color:var(--amber);font-size:.7rem;font-weight:750;letter-spacing:.16em}
+    .stats{border-left:1px solid #414145;padding-left:20px}.speed{font-size:clamp(2.5rem,11vw,4rem);font-weight:720;line-height:1;letter-spacing:-.06em}.unit{color:var(--muted);font-size:.77rem;letter-spacing:.12em}    .rpm-line{display:flex;align-items:baseline;gap:8px;margin-top:14px}.rpm{font-size:1.6rem;font-weight:650;font-variant-numeric:tabular-nums}.shift-state{min-height:1.2em;margin-top:2px;font-size:.85rem;font-weight:850;letter-spacing:.12em}.shift-state.up{color:var(--red)}.shift-state.down{color:#65baff}
     .bar{height:10px;border-radius:8px;background:linear-gradient(90deg,#35bd7a 0 45%,#eac04d 68%,#f18343 85%,#f04e5e);position:relative;margin:16px 0 7px;overflow:hidden}
     .bar:after{content:"";position:absolute;inset:0 auto 0 0;width:var(--rpm);background:#11121466;border-right:2px solid white}
     .ticks{display:flex;justify-content:space-between;color:var(--muted);font-size:.65rem}
@@ -83,7 +84,7 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
       <div class="stats">
         <div class="speed"><span id="speed">--</span></div><div class="unit">KM/H</div>
         <div class="rpm-line"><span class="rpm" id="rpm">----</span><span class="unit">RPM</span></div>
-        <div class="shift-state" id="shiftState"></div>
+        <div class="shift-state" id="shiftState" aria-live="polite"></div>
       </div>
     </div>
     <div class="bar" id="rpmBar" style="--rpm:0%"></div>
@@ -125,7 +126,10 @@ async function update(){
     $('trip').textContent=Number(d.trip).toFixed(2);
     $('coolant').textContent=Math.round(d.coolant);
     $('rpmBar').style.setProperty('--rpm',Math.min(100,d.rpm/7000*100)+'%');
-    $('shiftState').textContent=d.shift?'SHIFT':'';
+    const shiftState=$('shiftState');
+    shiftState.textContent=d.shift==='up'?'↑ SHIFT UP':d.shift==='down'?'↓ SHIFT DOWN':'';
+    shiftState.classList.toggle('up',d.shift==='up');
+    shiftState.classList.toggle('down',d.shift==='down');
     buttons.forEach(button=>button.classList.toggle('active',button.dataset.mode===d.mode));
     [...$('leds').children].forEach((led,index)=>led.classList.toggle('on',index<d.leds));
     document.title='Gear '+d.gear+' · Toyota Quest';
@@ -170,6 +174,12 @@ float shiftRpm() {
   }
 }
 
+ShiftCue shiftCue() {
+  if (engineRpm >= shiftRpm()) return ShiftCue::UP;
+  if (simulatedGear > 1 && engineRpm <= 1600.0f) return ShiftCue::DOWN;
+  return ShiftCue::NONE;
+}
+
 bool requireAuthentication() {
   if (server.authenticate(WEB_USERNAME, WEB_PASSWORD)) return true;
   server.requestAuthentication();
@@ -183,18 +193,21 @@ void handleRoot() {
 
 void handleApi() {
   if (!requireAuthentication()) return;
-  char json[320];
+  char json[360];
   const float ledProgress = engineRpm / shiftRpm() * LED_COUNT;
   const uint8_t ledCount = ledProgress >= LED_COUNT
                                ? LED_COUNT
                                : static_cast<uint8_t>(ledProgress);
+  const ShiftCue cue = shiftCue();
+  const char *cueName = cue == ShiftCue::UP ? "up" :
+                        cue == ShiftCue::DOWN ? "down" : "none";
   snprintf(json, sizeof(json),
            "{\"mode\":\"%s\",\"gear\":%u,\"rpm\":%.0f,\"speed\":%.1f,"
            "\"averageFuel\":%.2f,\"instantFuel\":%.2f,"
-           "\"trip\":%.3f,\"coolant\":%.1f,\"leds\":%u,\"shift\":%s}",
+           "\"trip\":%.3f,\"coolant\":%.1f,\"leds\":%u,\"shift\":\"%s\"}",
            modeSlug(), simulatedGear, engineRpm, vehicleSpeedKmh,
            averageFuelLPer100Km, instantFuelLPer100Km, sessionDistanceKm,
-           coolantTempC, ledCount, engineRpm >= shiftRpm() ? "true" : "false");
+           coolantTempC, ledCount, cueName);
   server.send(200, "application/json", json);
 }
 
@@ -261,6 +274,20 @@ void drawDashboard() {
   snprintf(text, sizeof(text), "AVG %.1f L/100", averageFuelLPer100Km);
   u8g2.drawStr(51, 55, text);
 
+  const ShiftCue cue = shiftCue();
+  if (cue != ShiftCue::NONE) {
+    const int16_t arrowX = 115;
+    if (cue == ShiftCue::UP) {
+      u8g2.drawLine(arrowX, 51, arrowX, 61);
+      u8g2.drawTriangle(arrowX, 47, arrowX - 5, 53, arrowX + 5, 53);
+      u8g2.drawStr(108, 43, "UP");
+    } else {
+      u8g2.drawLine(arrowX, 47, arrowX, 57);
+      u8g2.drawTriangle(arrowX, 61, arrowX - 5, 55, arrowX + 5, 55);
+      u8g2.drawStr(105, 43, "DOWN");
+    }
+  }
+
   const float barProgress = engineRpm / 7000.0f * 9;
   const uint8_t bars = barProgress >= 9 ? 9 : static_cast<uint8_t>(barProgress);
   for (uint8_t i = 0; i < 9; ++i) {
@@ -321,7 +348,7 @@ void updateShiftLeds(uint32_t now) {
   const uint8_t litCount = ledProgress >= LED_COUNT
                                ? LED_COUNT
                                : static_cast<uint8_t>(ledProgress);
-  const bool shiftAlert = engineRpm >= shiftPoint;
+  const bool shiftAlert = shiftCue() == ShiftCue::UP;
   for (uint8_t i = 0; i < LED_COUNT; ++i) {
     uint32_t color = 0;
     if (i < litCount) {

@@ -8,6 +8,7 @@ An ESP8266-based prototype for a Toyota Quest-inspired dashboard. It simulates a
 
 - ECO, NORMAL, and PERFORMANCE modes, selectable from the web dashboard.
 - Large simulated gear indicator, speed, and RPM shift bar.
+- Up-shift arrow at the selected mode's RPM limit and down-shift arrow below 1,600 RPM when above first gear.
 - Simulated RPM, speed, coolant temperature, and throttle.
 - Average and current estimated fuel economy in L/100 km.
 - Session trip distance (no odometer display).
