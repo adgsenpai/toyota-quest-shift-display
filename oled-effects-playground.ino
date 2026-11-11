@@ -2,22 +2,21 @@
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
 #include <U8g2lib.h>
-#include <Adafruit_NeoPixel.h>
 #include <math.h>
 
 // The HW-364 OLED uses software-I2C on GPIO14 (clock) and GPIO12 (data).
 U8G2_SSD1306_128X64_NONAME_F_SW_I2C u8g2(
     U8G2_R0, /* clock=*/14, /* data=*/12, U8X8_PIN_NONE);
 
-constexpr uint8_t LED_PIN = 4;  // NodeMCU D2; GRB addressable strips use one data pin.
+constexpr uint8_t LED_GREEN_PIN = 16;  // NodeMCU D0
+constexpr uint8_t LED_BLUE_PIN = 5;    // NodeMCU D1
+constexpr uint8_t LED_RED_PIN = 4;     // NodeMCU D2
 constexpr uint8_t LED_COUNT = 8;
-constexpr uint8_t LED_BRIGHTNESS = 48;
 constexpr char AP_SSID[] = "Quest-Shift";
 constexpr char AP_PASSWORD[] = "QUEST_ODO";
 constexpr char WEB_USERNAME[] = "quest";
 constexpr char WEB_PASSWORD[] = "QUEST_ODO";
 ESP8266WebServer server(80);
-Adafruit_NeoPixel shiftLeds(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
 
 enum class DriveMode : uint8_t { ECO, NORMAL, PERFORMANCE };
 enum class ShiftCue : uint8_t { NONE, UP, DOWN };
@@ -49,14 +48,14 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
     :root{color-scheme:dark;--bg:#111214;--panel:#1c1d20;--muted:#9b9da2;--text:#f4f3f0;--red:#eb3038;--green:#75e3a0;--amber:#ffd15c}
     *{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 48% -15%,#383033 0,#171719 40%,var(--bg) 74%);color:var(--text);font:15px/1.45 system-ui,-apple-system,Segoe UI,sans-serif}
     main{max-width:720px;margin:auto;padding:24px 18px 42px}.top{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
-    .brand{display:flex;align-items:center;gap:12px}.brand-mark{display:grid;place-items:center;width:48px;height:48px;border:2px solid var(--red);border-radius:50%;color:var(--red);font-size:1.35rem;font-weight:850;font-style:italic;letter-spacing:-.12em;padding-right:3px}
+    .brand{display:flex;align-items:center;gap:12px}.brand-mark{display:block;width:52px;height:52px;flex:none;color:var(--red);filter:drop-shadow(0 0 10px #eb303833)}
     h1{font-size:1.35rem;font-weight:850;letter-spacing:.13em;margin:0}.subtitle,.label,.foot{color:var(--muted);font-size:.76rem;letter-spacing:.08em}.badge{border:1px solid #46474a;border-radius:20px;padding:6px 10px;color:var(--green);font-size:.7rem;letter-spacing:.06em}
     .panel{background:linear-gradient(145deg,#242528,#191a1c);border:1px solid #353639;border-radius:16px;padding:18px;margin:12px 0;box-shadow:0 14px 36px #0004}
     .instrument{position:relative;overflow:hidden;padding:24px 22px 18px;border-color:#464042;background:linear-gradient(130deg,#282527,#171719 58%,#242123)}
     .instrument:before{content:"";position:absolute;left:0;top:18px;bottom:18px;width:3px;background:var(--red);border-radius:4px}
-    .hero{display:grid;grid-template-columns:1.08fr 1fr;gap:14px;align-items:center}.gear-block{display:flex;align-items:center;gap:16px}.gear-number{font-size:clamp(6.5rem,27vw,10rem);font-weight:800;line-height:.78;letter-spacing:-.1em;color:#fff;text-shadow:0 0 35px #fff2}
-    .gear-label{writing-mode:vertical-rl;transform:rotate(180deg);font-size:.72rem;letter-spacing:.22em;color:var(--muted)}
-    .stats{border-left:1px solid #414145;padding-left:20px}.speed{font-size:clamp(2.5rem,11vw,4rem);font-weight:720;line-height:1;letter-spacing:-.06em}.unit{color:var(--muted);font-size:.77rem;letter-spacing:.12em}    .rpm-line{display:flex;align-items:baseline;gap:8px;margin-top:14px}.rpm{font-size:1.6rem;font-weight:650;font-variant-numeric:tabular-nums}.shift-state{min-height:1.2em;margin-top:2px;font-size:.85rem;font-weight:850;letter-spacing:.12em}.shift-state.up{color:var(--red)}.shift-state.down{color:#65baff}
+    .hero{display:grid;grid-template-columns:1.08fr 1fr;gap:14px;align-items:center}.gear-block{display:flex;flex-direction:column;align-items:flex-start;gap:8px}.gear-heading{display:flex;align-items:center;gap:9px;min-height:23px}.gear-number{font-size:clamp(6.5rem,27vw,10rem);font-weight:800;line-height:.78;letter-spacing:-.1em;color:#fff;text-shadow:0 0 35px #fff2}
+    .gear-label{font-size:.76rem;letter-spacing:.19em;color:var(--muted)}.shift-state{font-size:1.35rem;font-weight:900;line-height:1}.shift-state.up{color:var(--red);text-shadow:0 0 12px #eb303866}.shift-state.down{color:#65baff;text-shadow:0 0 12px #65baff66}
+    .stats{border-left:1px solid #414145;padding-left:20px}.speed{font-size:clamp(2.5rem,11vw,4rem);font-weight:720;line-height:1;letter-spacing:-.06em}.unit{color:var(--muted);font-size:.77rem;letter-spacing:.12em}.rpm-line{display:flex;align-items:baseline;gap:8px;margin-top:14px}.rpm{font-size:1.6rem;font-weight:650;font-variant-numeric:tabular-nums}
     .bar{height:10px;border-radius:8px;background:linear-gradient(90deg,#35bd7a 0 45%,#eac04d 68%,#f18343 85%,#f04e5e);position:relative;margin:16px 0 7px;overflow:hidden}
     .bar:after{content:"";position:absolute;inset:0 auto 0 0;width:var(--rpm);background:#11121466;border-right:2px solid white}
     .ticks{display:flex;justify-content:space-between;color:var(--muted);font-size:.65rem}
@@ -68,28 +67,35 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
     button.active{border-color:var(--red);color:white;background:#492327;box-shadow:inset 0 -2px var(--red)}button:focus-visible{outline:2px solid white;outline-offset:2px}
     .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.metric{margin:0;background:#191a1c;padding:15px}.value{font-size:1.2rem;font-weight:650;margin-top:5px;font-variant-numeric:tabular-nums}.metric .label{font-size:.66rem}
     .foot{margin:16px 2px 0;letter-spacing:0}.notice{color:#c6c2c2;font-size:.75rem}#toast{min-height:1.2em;color:var(--amber);font-size:.78rem;margin-top:8px}
-    @media(max-width:520px){main{padding:16px 12px 30px}.top{margin-bottom:13px}.brand-mark{width:42px;height:42px}.instrument{padding:22px 16px 16px}.gear-block{gap:10px}.gear-number{font-size:clamp(6rem,29vw,8rem)}.stats{padding-left:14px}.grid{grid-template-columns:repeat(2,1fr);gap:8px}.metric{padding:13px}.value{font-size:1.08rem}}
+    @media(max-width:520px){main{padding:16px 12px 30px}.top{margin-bottom:13px}.brand-mark{width:42px;height:42px}.instrument{padding:22px 16px 16px}.gear-block{gap:8px}.gear-number{font-size:clamp(6rem,29vw,8rem)}.stats{padding-left:14px}.grid{grid-template-columns:repeat(2,1fr);gap:8px}.metric{padding:13px}.value{font-size:1.08rem}}
     @media(max-width:360px){.subtitle{font-size:.65rem}.badge{padding:5px 7px;font-size:.62rem}.gear-number{font-size:5.7rem}.speed{font-size:2.4rem}.modes{gap:5px}button{font-size:.7rem}}
   </style>
 </head>
 <body>
 <main>
   <header class="top">
-    <div class="brand"><div class="brand-mark" aria-hidden="true">T</div><div><h1>TOYOTA</h1><div class="subtitle">QUEST 1.6 · SHIFT DISPLAY</div></div></div>
+    <div class="brand">
+      <svg class="brand-mark" viewBox="0 0 24 24" role="img" aria-label="Toyota logo" xmlns="http://www.w3.org/2000/svg">
+        <path fill="currentColor" d="M12 4.236c-6.627 0-12 3.476-12 7.762 0 4.289 5.373 7.766 12 7.766s12-3.476 12-7.766-5.373-7.762-12-7.762zm0 12.196c-.986 0-1.79-1.942-1.84-4.385a21.093 21.093 0 0 0 3.68 0c-.05 2.442-.854 4.385-1.84 4.385zm-1.719-6.324c.268-1.727.937-2.953 1.719-2.953s1.45 1.226 1.719 2.953a19.436 19.436 0 0 1-3.438 0zM12 5.358c-1.287 0-2.385 1.928-2.79 4.619-2.44-.38-4.143-1.248-4.143-2.256 0-1.36 3.104-2.461 6.933-2.461 3.83 0 6.933 1.102 6.933 2.461 0 1.008-1.703 1.876-4.143 2.256-.405-2.69-1.503-4.618-2.79-4.618zm-10.28 6.35c0-1.315.507-2.55 1.388-3.61-.009.074-.015.15-.015.226 0 1.657 2.485 3.07 5.953 3.59-.003.12-.003.242-.003.364 0 3.09.866 5.705 2.063 6.593-5.26-.317-9.385-3.403-9.385-7.163zm11.174 7.163c1.197-.888 2.063-3.504 2.063-6.593 0-.123-.002-.243-.003-.363 3.466-.52 5.953-1.932 5.953-3.591 0-.076-.006-.152-.015-.226.881 1.063 1.387 2.295 1.387 3.61 0 3.76-4.125 6.846-9.385 7.163z"/>
+      </svg>
+      <div><h1>TOYOTA</h1><div class="subtitle">QUEST 1.6 · SHIFT DISPLAY</div></div>
+    </div>
     <span class="badge" id="connection">CONNECTING</span>
   </header>
   <section class="panel instrument">
     <div class="hero">
-      <div class="gear-block"><div class="gear-number" id="gear">1</div><div class="gear-label">CURRENT GEAR</div></div>
+      <div class="gear-block">
+        <div class="gear-heading"><span class="gear-label">GEAR</span><span class="shift-state" id="shiftState" aria-live="polite"></span></div>
+        <div class="gear-number" id="gear">1</div>
+      </div>
       <div class="stats">
         <div class="speed"><span id="speed">--</span></div><div class="unit">KM/H</div>
         <div class="rpm-line"><span class="rpm" id="rpm">----</span><span class="unit">RPM</span></div>
-        <div class="shift-state" id="shiftState" aria-live="polite"></div>
       </div>
     </div>
     <div class="bar" id="rpmBar" style="--rpm:0%"></div>
     <div class="ticks"><span>0</span><span>2k</span><span>4k</span><span>6k</span><span>7k</span></div>
-    <div class="label strip-label">SHIFT LIGHT · GPIO4 / D2 · GRB</div>
+    <div class="label strip-label">RGB SHIFT STRIP · G D0 / B D1 / R D2</div>
     <div class="leds" id="leds" aria-label="Simulated shift light"><i class="led"></i><i class="led"></i><i class="led"></i><i class="led"></i><i class="led"></i><i class="led"></i><i class="led"></i><i class="led"></i></div>
   </section>
   <section class="panel mode-panel">
@@ -127,9 +133,10 @@ async function update(){
     $('coolant').textContent=Math.round(d.coolant);
     $('rpmBar').style.setProperty('--rpm',Math.min(100,d.rpm/7000*100)+'%');
     const shiftState=$('shiftState');
-    shiftState.textContent=d.shift==='up'?'↑ SHIFT UP':d.shift==='down'?'↓ SHIFT DOWN':'';
+    shiftState.textContent=d.shift==='up'?'↑':d.shift==='down'?'↓':'';
     shiftState.classList.toggle('up',d.shift==='up');
     shiftState.classList.toggle('down',d.shift==='down');
+    shiftState.setAttribute('aria-label',d.shift==='up'?'Shift up':d.shift==='down'?'Shift down':'No shift cue');
     buttons.forEach(button=>button.classList.toggle('active',button.dataset.mode===d.mode));
     [...$('leds').children].forEach((led,index)=>led.classList.toggle('on',index<d.leds));
     document.title='Gear '+d.gear+' · Toyota Quest';
@@ -233,15 +240,22 @@ void handleMode() {
   server.send(200, "text/plain", modeName());
 }
 
+void drawToyotaLogo(uint8_t centerX, uint8_t centerY) {
+  u8g2.drawEllipse(centerX, centerY, 14, 9);
+  u8g2.drawEllipse(centerX, centerY, 4, 8);
+  u8g2.drawEllipse(centerX, centerY, 10, 3);
+}
+
 void drawBootScreen() {
   u8g2.clearBuffer();
+  drawToyotaLogo(64, 14);
   u8g2.setFont(u8g2_font_7x14B_tf);
-  u8g2.drawStr(22, 21, "TOYOTA");
+  u8g2.drawStr(22, 35, "TOYOTA");
   u8g2.setFont(u8g2_font_5x8_tf);
-  u8g2.drawStr(30, 34, "QUEST 1.6L");
-  u8g2.drawStr(29, 45, "SHIFT DISPLAY");
-  u8g2.drawFrame(15, 52, 98, 7);
-  u8g2.drawBox(17, 54, 94, 3);
+  u8g2.drawStr(30, 45, "QUEST 1.6L");
+  u8g2.drawStr(29, 54, "SHIFT DISPLAY");
+  u8g2.drawFrame(15, 57, 98, 6);
+  u8g2.drawBox(17, 59, 94, 2);
   u8g2.sendBuffer();
 }
 
@@ -259,6 +273,20 @@ void drawDashboard() {
   u8g2.drawHLine(0, 11, 128);
 
   u8g2.drawStr(3, 21, "GEAR");
+  const ShiftCue cue = shiftCue();
+  if (cue != ShiftCue::NONE) {
+    const int16_t arrowX = 31;
+    if (cue == ShiftCue::UP) {
+      u8g2.drawLine(arrowX, 20, arrowX, 14);
+      u8g2.drawTriangle(arrowX, 12, arrowX - 4, 17, arrowX + 4, 17);
+      u8g2.drawStr(38, 21, "UP");
+    } else {
+      u8g2.drawLine(arrowX, 13, arrowX, 19);
+      u8g2.drawTriangle(arrowX, 21, arrowX - 4, 16, arrowX + 4, 16);
+      u8g2.drawStr(38, 21, "DOWN");
+    }
+  }
+
   snprintf(text, sizeof(text), "%u", simulatedGear);
   u8g2.setFont(u8g2_font_logisoso32_tn);
   u8g2.drawStr(2, 60, text);
@@ -273,20 +301,6 @@ void drawDashboard() {
   u8g2.drawStr(51, 45, text);
   snprintf(text, sizeof(text), "AVG %.1f L/100", averageFuelLPer100Km);
   u8g2.drawStr(51, 55, text);
-
-  const ShiftCue cue = shiftCue();
-  if (cue != ShiftCue::NONE) {
-    const int16_t arrowX = 115;
-    if (cue == ShiftCue::UP) {
-      u8g2.drawLine(arrowX, 51, arrowX, 61);
-      u8g2.drawTriangle(arrowX, 47, arrowX - 5, 53, arrowX + 5, 53);
-      u8g2.drawStr(108, 43, "UP");
-    } else {
-      u8g2.drawLine(arrowX, 47, arrowX, 57);
-      u8g2.drawTriangle(arrowX, 61, arrowX - 5, 55, arrowX + 5, 55);
-      u8g2.drawStr(105, 43, "DOWN");
-    }
-  }
 
   const float barProgress = engineRpm / 7000.0f * 9;
   const uint8_t bars = barProgress >= 9 ? 9 : static_cast<uint8_t>(barProgress);
@@ -343,27 +357,34 @@ void updateSimulator(uint32_t now) {
 }
 
 void updateShiftLeds(uint32_t now) {
-  const float shiftPoint = shiftRpm();
-  const float ledProgress = engineRpm / shiftPoint * LED_COUNT;
-  const uint8_t litCount = ledProgress >= LED_COUNT
-                               ? LED_COUNT
-                               : static_cast<uint8_t>(ledProgress);
-  const bool shiftAlert = shiftCue() == ShiftCue::UP;
-  for (uint8_t i = 0; i < LED_COUNT; ++i) {
-    uint32_t color = 0;
-    if (i < litCount) {
-      if (i < 4) {
-        color = shiftLeds.Color(45, 220, 110);
-      } else if (i < 6) {
-        color = shiftLeds.Color(255, 190, 45);
-      } else {
-        color = shiftLeds.Color(255, 45, 55);
-      }
-      if (shiftAlert && ((now / 180) & 1)) color = 0;
-    }
-    shiftLeds.setPixelColor(i, color);
+  const float progress = min(1.0f, engineRpm / shiftRpm());
+  uint8_t red = 0;
+  uint8_t green = 0;
+  uint8_t blue = 0;
+
+  if (progress < 0.5f) {
+    green = static_cast<uint8_t>(35.0f + progress * 440.0f);
+  } else if (progress < 0.8f) {
+    red = static_cast<uint8_t>((progress - 0.5f) / 0.3f * 255.0f);
+    green = 255;
+  } else {
+    red = 255;
+    green = static_cast<uint8_t>((1.0f - progress) / 0.2f * 255.0f);
   }
-  shiftLeds.show();
+
+  const ShiftCue cue = shiftCue();
+  if (cue == ShiftCue::UP && ((now / 180) & 1)) {
+    red = 0;
+    green = 0;
+  } else if (cue == ShiftCue::DOWN) {
+    red = 0;
+    green = 0;
+    blue = ((now / 300) & 1) ? 96 : 0;
+  }
+
+  analogWrite(LED_RED_PIN, red);
+  analogWrite(LED_GREEN_PIN, green);
+  analogWrite(LED_BLUE_PIN, blue);
 }
 
 void setup() {
@@ -371,10 +392,14 @@ void setup() {
   u8g2.begin();
   drawBootScreen();
 
-  shiftLeds.begin();
-  shiftLeds.setBrightness(LED_BRIGHTNESS);
-  shiftLeds.clear();
-  shiftLeds.show();
+  analogWriteRange(255);
+  analogWriteFreq(1000);
+  pinMode(LED_RED_PIN, OUTPUT);
+  pinMode(LED_GREEN_PIN, OUTPUT);
+  pinMode(LED_BLUE_PIN, OUTPUT);
+  analogWrite(LED_RED_PIN, 0);
+  analogWrite(LED_GREEN_PIN, 0);
+  analogWrite(LED_BLUE_PIN, 0);
 
   WiFi.mode(WIFI_AP);
   if (!WiFi.softAP(AP_SSID, AP_PASSWORD)) {
