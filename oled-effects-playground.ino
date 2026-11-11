@@ -151,10 +151,15 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
 <script>
 const $=id=>document.getElementById(id);
 const buttons=[...document.querySelectorAll('[data-mode]')];
+let updateInProgress=false;
 async function update(){
+  if(updateInProgress)return;
+  updateInProgress=true;
+  const controller=new AbortController();
+  const timeout=setTimeout(()=>controller.abort(),3000);
   try{
-    const response=await fetch('/api',{cache:'no-store'});
-    if(!response.ok)throw new Error('HTTP '+response.status);
+    const response=await fetch('/api',{cache:'no-store',signal:controller.signal});
+    if(!response.ok)throw new Error(response.status===401?'AUTH REQUIRED':'API ERROR');
     const d=await response.json();
     $('connection').textContent='SIMULATOR ONLINE';
     $('gear').textContent=d.gear;
@@ -175,7 +180,12 @@ async function update(){
     $('memory').textContent='ON-BOARD MEMORY · '+d.samples+' SHIFT SAMPLES · ↑ '+d.upshifts+' / ↓ '+d.downshifts;
     buttons.forEach(button=>button.classList.toggle('active',button.dataset.mode===d.mode));
     document.title='Gear '+d.gear+' · Toyota Quest';
-  }catch(error){$('connection').textContent='OFFLINE';}
+  }catch(error){
+    $('connection').textContent=error.name==='AbortError'?'API TIMEOUT':error.message==='AUTH REQUIRED'?'AUTH REQUIRED':'OFFLINE';
+  }finally{
+    clearTimeout(timeout);
+    updateInProgress=false;
+  }
 }
 buttons.forEach(button=>button.addEventListener('click',async()=>{
   $('toast').textContent='';
