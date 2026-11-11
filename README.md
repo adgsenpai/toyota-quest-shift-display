@@ -12,7 +12,7 @@ An ESP8266-based prototype for a Toyota Quest-inspired dashboard. It simulates a
 - Simulated RPM, speed, coolant temperature, and throttle.
 - Average and current estimated fuel economy in L/100 km.
 - Session trip distance (no odometer display).
-- RPM shift-light colors on an analog RGB strip, transitioning green to amber to red. All LEDs on an analog strip always show the same color; individual LED control requires an addressable strip such as WS2812B/NeoPixel.
+- RPM shift-light colors on an analog RGB strip, transitioning green to amber to red. The dashboard shows an RPM-based, LED-by-LED preview, but the physical analog strip changes as one unit; individual physical LED control requires an addressable strip such as WS2812B/NeoPixel.
 - On-chip flash memory remembers the selected mode, trip/fuel totals, and the most recent 16 simulated shift-decision samples across restarts.
 - Bounded shift recommendations: never suggest an upshift above 6th gear or a downshift below 1st.
 - Two-tone OLED layout: Toyota emblem and header are kept in the yellow top band; gear, shift arrow, and live readings stay in the blue area.

@@ -91,7 +91,8 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
     .bar{height:10px;border-radius:8px;background:linear-gradient(90deg,#35bd7a 0 45%,#eac04d 68%,#f18343 85%,#f04e5e);position:relative;margin:16px 0 7px;overflow:hidden}
     .bar:after{content:"";position:absolute;inset:0 auto 0 0;width:var(--rpm);background:#11121466;border-right:2px solid white}
     .ticks{display:flex;justify-content:space-between;color:var(--muted);font-size:.65rem}
-    .strip-label{margin-top:17px}.leds{display:flex;gap:8px;align-items:center;margin-top:10px}.led{flex:1;height:12px;border-radius:8px;background:#35363a;box-shadow:inset 0 0 5px #0008}
+    .strip-label{margin-top:17px}.leds{display:flex;gap:8px;align-items:center;margin-top:10px}.led{flex:1;height:12px;border-radius:8px;background:#35363a;box-shadow:inset 0 0 5px #0008;transition:background .12s,box-shadow .12s}
+    .led.on:nth-child(-n+4){background:#47db88;box-shadow:0 0 12px #47db8880}.led.on:nth-child(n+5):nth-child(-n+6){background:#ffd45e;box-shadow:0 0 12px #ffd45e80}.led.on:nth-child(n+7){background:#ff5969;box-shadow:0 0 12px #ff596980}
     .memory-note{margin-top:10px;color:var(--muted);font-size:.7rem;letter-spacing:.04em}
     .mode-panel{padding:17px 18px}.mode-heading{display:flex;justify-content:space-between;align-items:center}.current-mode{color:var(--red);font-size:.76rem;font-weight:750;letter-spacing:.12em}
     .modes{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:11px}
@@ -117,7 +118,7 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
   <section class="panel instrument">
     <div class="hero">
       <div class="gear-block">
-        <div class="gear-heading"><span class="gear-label">GEAR</span><span class="shift-state" id="shiftState" aria-live="polite"></span></div>
+        <div class="gear-heading"><span class="gear-label">GEAR</span></div>
         <div class="gear-readout"><div class="gear-number" id="gear">1</div><span class="shift-state" id="shiftState" aria-live="polite"></span></div>
       </div>
       <div class="stats">
@@ -127,8 +128,8 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
     </div>
     <div class="bar" id="rpmBar" style="--rpm:0%"></div>
     <div class="ticks"><span>0</span><span>2k</span><span>4k</span><span>6k</span><span>7k</span></div>
-    <div class="label strip-label">RGB SHIFT STRIP · ALL LEDS SAME COLOR</div>
-    <div class="leds" id="leds" aria-label="Simulated shift light"><i class="led"></i><i class="led"></i><i class="led"></i><i class="led"></i><i class="led"></i><i class="led"></i><i class="led"></i><i class="led"></i></div>
+    <div class="label strip-label">RPM SHIFT LIGHT · SIMULATED LED-BY-LED PREVIEW</div>
+    <div class="leds" id="leds" aria-label="Simulated sequential shift light; physical analog strip changes as one unit"><i class="led"></i><i class="led"></i><i class="led"></i><i class="led"></i><i class="led"></i><i class="led"></i><i class="led"></i><i class="led"></i></div>
     <div class="memory-note" id="memory">ON-BOARD MEMORY · LOADING</div>
   </section>
   <section class="panel mode-panel">
@@ -170,11 +171,7 @@ async function update(){
     shiftState.classList.toggle('up',d.shift==='up');
     shiftState.classList.toggle('down',d.shift==='down');
     shiftState.setAttribute('aria-label',d.shift==='up'?'Shift up':d.shift==='down'?'Shift down':'No shift cue');
-    const stripColor='rgb('+d.red+','+d.green+','+d.blue+')';
-    [...$('leds').children].forEach(led=>{
-      led.style.backgroundColor=stripColor;
-      led.style.boxShadow='0 0 12px '+stripColor;
-    });
+    [...$('leds').children].forEach((led,index)=>led.classList.toggle('on',index<d.leds));
     $('memory').textContent='ON-BOARD MEMORY · '+d.samples+' SHIFT SAMPLES · ↑ '+d.upshifts+' / ↓ '+d.downshifts;
     buttons.forEach(button=>button.classList.toggle('active',button.dataset.mode===d.mode));
     document.title='Gear '+d.gear+' · Toyota Quest';
@@ -371,15 +368,19 @@ void handleApi() {
   const char *cueName = cue == ShiftCue::UP ? "up" :
                         cue == ShiftCue::DOWN ? "down" : "none";
   const ShiftLightColor color = shiftLightColor(millis());
+  const float ledProgress = engineRpm / shiftRpm() * 8.0f;
+  const uint8_t litLeds = ledProgress >= 8.0f
+                              ? 8
+                              : static_cast<uint8_t>(ledProgress);
   snprintf(json, sizeof(json),
            "{\"mode\":\"%s\",\"gear\":%u,\"rpm\":%.0f,\"speed\":%.1f,"
            "\"averageFuel\":%.2f,\"instantFuel\":%.2f,"
            "\"trip\":%.3f,\"coolant\":%.1f,\"red\":%u,\"green\":%u,"
-           "\"blue\":%u,\"shift\":\"%s\",\"samples\":%u,"
+           "\"blue\":%u,\"leds\":%u,\"shift\":\"%s\",\"samples\":%u,"
            "\"upshifts\":%lu,\"downshifts\":%lu}",
            modeSlug(), simulatedGear, engineRpm, vehicleSpeedKmh,
            averageFuelLPer100Km, instantFuelLPer100Km, sessionDistanceKm,
-           coolantTempC, color.red, color.green, color.blue, cueName,
+           coolantTempC, color.red, color.green, color.blue, litLeds, cueName,
            persistentState.sampleCount,
            static_cast<unsigned long>(persistentState.upshiftEvents),
            static_cast<unsigned long>(persistentState.downshiftEvents));
