@@ -7,12 +7,12 @@ An ESP8266-based prototype for a Toyota Quest-inspired dashboard. It simulates a
 ## Features
 
 - ECO, NORMAL, and PERFORMANCE modes, selectable from the web dashboard.
-- Large simulated gear indicator, speed, and RPM shift bar, with up/down arrows beside the gear label.
+- Large simulated 1–6 gear indicator, speed, and RPM shift bar, with a large up/down arrow beside the gear number (no arrow text).
 - Up-shift arrow at the selected mode's RPM limit and down-shift arrow below 1,600 RPM when above first gear.
 - Simulated RPM, speed, coolant temperature, and throttle.
 - Average and current estimated fuel economy in L/100 km.
 - Session trip distance (no odometer display).
-- RPM shift-light colors on an analog RGB strip, transitioning green to amber to red.
+- RPM shift-light colors on an analog RGB strip, transitioning green to amber to red. All LEDs on an analog strip always show the same color; individual LED control requires an addressable strip such as WS2812B/NeoPixel.
 - Monochrome OLED boot screen and live dashboard.
 - Local Wi-Fi access point and HTTP Basic Authentication.
 
@@ -20,7 +20,7 @@ An ESP8266-based prototype for a Toyota Quest-inspired dashboard. It simulates a
 
 - ESP8266 NodeMCU / HW-364-style board with SSD1306 128x64 OLED.
 - OLED software-I²C clock: GPIO14; data: GPIO12.
-- Analog RGB strip color channels: green to GPIO16 (NodeMCU D0), blue to GPIO5 (D1), red to GPIO4 (D2).
+- Analog RGB strip color channels: green to GPIO16 (NodeMCU D0), blue to GPIO5 (D1), red to GPIO4 (D2). The dashboard represents the strip LEDs in a single uniform color to match the hardware.
 - Drive each strip channel through a suitable transistor/MOSFET driver; never connect a strip's power or channel current directly to ESP8266 GPIO pins. Use an appropriately rated external strip supply and connect its ground to board ground.
 - This pin mapping is for an analog strip with separate color channels, not a WS2812/NeoPixel strip (which uses one data input).
 - D6/GPIO12 is already occupied by the OLED. D8/GPIO15 affects ESP8266 boot mode and is not used.

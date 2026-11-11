@@ -11,7 +11,6 @@ U8G2_SSD1306_128X64_NONAME_F_SW_I2C u8g2(
 constexpr uint8_t LED_GREEN_PIN = 16;  // NodeMCU D0
 constexpr uint8_t LED_BLUE_PIN = 5;    // NodeMCU D1
 constexpr uint8_t LED_RED_PIN = 4;     // NodeMCU D2
-constexpr uint8_t LED_COUNT = 8;
 constexpr char AP_SSID[] = "Quest-Shift";
 constexpr char AP_PASSWORD[] = "QUEST_ODO";
 constexpr char WEB_USERNAME[] = "quest";
@@ -53,14 +52,13 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
     .panel{background:linear-gradient(145deg,#242528,#191a1c);border:1px solid #353639;border-radius:16px;padding:18px;margin:12px 0;box-shadow:0 14px 36px #0004}
     .instrument{position:relative;overflow:hidden;padding:24px 22px 18px;border-color:#464042;background:linear-gradient(130deg,#282527,#171719 58%,#242123)}
     .instrument:before{content:"";position:absolute;left:0;top:18px;bottom:18px;width:3px;background:var(--red);border-radius:4px}
-    .hero{display:grid;grid-template-columns:1.08fr 1fr;gap:14px;align-items:center}.gear-block{display:flex;flex-direction:column;align-items:flex-start;gap:8px}.gear-heading{display:flex;align-items:center;gap:9px;min-height:23px}.gear-number{font-size:clamp(6.5rem,27vw,10rem);font-weight:800;line-height:.78;letter-spacing:-.1em;color:#fff;text-shadow:0 0 35px #fff2}
-    .gear-label{font-size:.76rem;letter-spacing:.19em;color:var(--muted)}.shift-state{font-size:1.35rem;font-weight:900;line-height:1}.shift-state.up{color:var(--red);text-shadow:0 0 12px #eb303866}.shift-state.down{color:#65baff;text-shadow:0 0 12px #65baff66}
+    .hero{display:grid;grid-template-columns:1.08fr 1fr;gap:14px;align-items:center}.gear-block{display:flex;flex-direction:column;align-items:flex-start;gap:8px}.gear-heading{display:flex;align-items:center;gap:9px;min-height:23px}.gear-readout{display:flex;align-items:center;gap:15px}.gear-number{font-size:clamp(6.5rem,27vw,10rem);font-weight:800;line-height:.78;letter-spacing:-.1em;color:#fff;text-shadow:0 0 35px #fff2}
+    .gear-label{font-size:.76rem;letter-spacing:.19em;color:var(--muted)}.shift-state{font-size:clamp(6.5rem,27vw,10rem);font-weight:800;line-height:.78;letter-spacing:-.08em}.shift-state.up{color:var(--red);text-shadow:0 0 12px #eb303866}.shift-state.down{color:#65baff;text-shadow:0 0 12px #65baff66}
     .stats{border-left:1px solid #414145;padding-left:20px}.speed{font-size:clamp(2.5rem,11vw,4rem);font-weight:720;line-height:1;letter-spacing:-.06em}.unit{color:var(--muted);font-size:.77rem;letter-spacing:.12em}.rpm-line{display:flex;align-items:baseline;gap:8px;margin-top:14px}.rpm{font-size:1.6rem;font-weight:650;font-variant-numeric:tabular-nums}
     .bar{height:10px;border-radius:8px;background:linear-gradient(90deg,#35bd7a 0 45%,#eac04d 68%,#f18343 85%,#f04e5e);position:relative;margin:16px 0 7px;overflow:hidden}
     .bar:after{content:"";position:absolute;inset:0 auto 0 0;width:var(--rpm);background:#11121466;border-right:2px solid white}
     .ticks{display:flex;justify-content:space-between;color:var(--muted);font-size:.65rem}
     .strip-label{margin-top:17px}.leds{display:flex;gap:8px;align-items:center;margin-top:10px}.led{flex:1;height:12px;border-radius:8px;background:#35363a;box-shadow:inset 0 0 5px #0008}
-    .led.on:nth-child(-n+4){background:#47db88;box-shadow:0 0 12px #47db8880}.led.on:nth-child(n+5):nth-child(-n+6){background:#ffd45e;box-shadow:0 0 12px #ffd45e80}.led.on:nth-child(n+7){background:#ff5969;box-shadow:0 0 12px #ff596980}
     .mode-panel{padding:17px 18px}.mode-heading{display:flex;justify-content:space-between;align-items:center}.current-mode{color:var(--red);font-size:.76rem;font-weight:750;letter-spacing:.12em}
     .modes{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:11px}
     button{border:1px solid #414246;background:#242528;color:#b8b8ba;padding:12px 6px;border-radius:9px;font:inherit;font-size:.8rem;font-weight:750;letter-spacing:.06em;cursor:pointer;transition:background .15s,border-color .15s,color .15s}
@@ -86,7 +84,7 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
     <div class="hero">
       <div class="gear-block">
         <div class="gear-heading"><span class="gear-label">GEAR</span><span class="shift-state" id="shiftState" aria-live="polite"></span></div>
-        <div class="gear-number" id="gear">1</div>
+        <div class="gear-readout"><div class="gear-number" id="gear">1</div><span class="shift-state" id="shiftState" aria-live="polite"></span></div>
       </div>
       <div class="stats">
         <div class="speed"><span id="speed">--</span></div><div class="unit">KM/H</div>
@@ -95,7 +93,7 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
     </div>
     <div class="bar" id="rpmBar" style="--rpm:0%"></div>
     <div class="ticks"><span>0</span><span>2k</span><span>4k</span><span>6k</span><span>7k</span></div>
-    <div class="label strip-label">RGB SHIFT STRIP · G D0 / B D1 / R D2</div>
+    <div class="label strip-label">RGB SHIFT STRIP · ALL LEDS SAME COLOR</div>
     <div class="leds" id="leds" aria-label="Simulated shift light"><i class="led"></i><i class="led"></i><i class="led"></i><i class="led"></i><i class="led"></i><i class="led"></i><i class="led"></i><i class="led"></i></div>
   </section>
   <section class="panel mode-panel">
@@ -137,8 +135,12 @@ async function update(){
     shiftState.classList.toggle('up',d.shift==='up');
     shiftState.classList.toggle('down',d.shift==='down');
     shiftState.setAttribute('aria-label',d.shift==='up'?'Shift up':d.shift==='down'?'Shift down':'No shift cue');
+    const stripColor='rgb('+d.red+','+d.green+','+d.blue+')';
+    [...$('leds').children].forEach(led=>{
+      led.style.backgroundColor=stripColor;
+      led.style.boxShadow='0 0 12px '+stripColor;
+    });
     buttons.forEach(button=>button.classList.toggle('active',button.dataset.mode===d.mode));
-    [...$('leds').children].forEach((led,index)=>led.classList.toggle('on',index<d.leds));
     document.title='Gear '+d.gear+' · Toyota Quest';
   }catch(error){$('connection').textContent='OFFLINE';}
 }
@@ -187,6 +189,38 @@ ShiftCue shiftCue() {
   return ShiftCue::NONE;
 }
 
+struct ShiftLightColor {
+  uint8_t red;
+  uint8_t green;
+  uint8_t blue;
+};
+
+ShiftLightColor shiftLightColor(uint32_t now) {
+  const float progress = min(1.0f, engineRpm / shiftRpm());
+  ShiftLightColor color = {0, 0, 0};
+
+  if (progress < 0.5f) {
+    color.green = static_cast<uint8_t>(35.0f + progress * 440.0f);
+  } else if (progress < 0.8f) {
+    color.red = static_cast<uint8_t>((progress - 0.5f) / 0.3f * 255.0f);
+    color.green = 255;
+  } else {
+    color.red = 255;
+    color.green = static_cast<uint8_t>((1.0f - progress) / 0.2f * 255.0f);
+  }
+
+  const ShiftCue cue = shiftCue();
+  if (cue == ShiftCue::UP && ((now / 180) & 1)) {
+    color.red = 0;
+    color.green = 0;
+  } else if (cue == ShiftCue::DOWN) {
+    color.red = 0;
+    color.green = 0;
+    color.blue = ((now / 300) & 1) ? 96 : 0;
+  }
+  return color;
+}
+
 bool requireAuthentication() {
   if (server.authenticate(WEB_USERNAME, WEB_PASSWORD)) return true;
   server.requestAuthentication();
@@ -200,21 +234,19 @@ void handleRoot() {
 
 void handleApi() {
   if (!requireAuthentication()) return;
-  char json[360];
-  const float ledProgress = engineRpm / shiftRpm() * LED_COUNT;
-  const uint8_t ledCount = ledProgress >= LED_COUNT
-                               ? LED_COUNT
-                               : static_cast<uint8_t>(ledProgress);
+  char json[400];
   const ShiftCue cue = shiftCue();
   const char *cueName = cue == ShiftCue::UP ? "up" :
                         cue == ShiftCue::DOWN ? "down" : "none";
+  const ShiftLightColor color = shiftLightColor(millis());
   snprintf(json, sizeof(json),
            "{\"mode\":\"%s\",\"gear\":%u,\"rpm\":%.0f,\"speed\":%.1f,"
            "\"averageFuel\":%.2f,\"instantFuel\":%.2f,"
-           "\"trip\":%.3f,\"coolant\":%.1f,\"leds\":%u,\"shift\":\"%s\"}",
+           "\"trip\":%.3f,\"coolant\":%.1f,\"red\":%u,\"green\":%u,"
+           "\"blue\":%u,\"shift\":\"%s\"}",
            modeSlug(), simulatedGear, engineRpm, vehicleSpeedKmh,
            averageFuelLPer100Km, instantFuelLPer100Km, sessionDistanceKm,
-           coolantTempC, ledCount, cueName);
+           coolantTempC, color.red, color.green, color.blue, cueName);
   server.send(200, "application/json", json);
 }
 
@@ -264,32 +296,24 @@ void drawDashboard() {
   u8g2.clearBuffer();
   u8g2.setDrawColor(1);
   u8g2.setFont(u8g2_font_5x8_tf);
-  u8g2.setFont(u8g2_font_5x8_tf);
   u8g2.drawStr(2, 8, "TOYOTA");
-  u8g2.drawStr(3, 8, "TOYOTA");
-  u8g2.setFont(u8g2_font_5x8_tf);
   u8g2.drawStr(38, 8, "QUEST 1.6L");
   u8g2.drawStr(90, 8, modeName());
   u8g2.drawHLine(0, 11, 128);
 
   u8g2.drawStr(3, 21, "GEAR");
   const ShiftCue cue = shiftCue();
-  if (cue != ShiftCue::NONE) {
-    const int16_t arrowX = 31;
-    if (cue == ShiftCue::UP) {
-      u8g2.drawLine(arrowX, 20, arrowX, 14);
-      u8g2.drawTriangle(arrowX, 12, arrowX - 4, 17, arrowX + 4, 17);
-      u8g2.drawStr(38, 21, "UP");
-    } else {
-      u8g2.drawLine(arrowX, 13, arrowX, 19);
-      u8g2.drawTriangle(arrowX, 21, arrowX - 4, 16, arrowX + 4, 16);
-      u8g2.drawStr(38, 21, "DOWN");
-    }
-  }
-
   snprintf(text, sizeof(text), "%u", simulatedGear);
   u8g2.setFont(u8g2_font_logisoso32_tn);
   u8g2.drawStr(2, 60, text);
+  const int16_t arrowX = 32;
+  if (cue == ShiftCue::UP) {
+    u8g2.drawLine(arrowX, 57, arrowX, 31);
+    u8g2.drawTriangle(arrowX, 25, arrowX - 9, 36, arrowX + 9, 36);
+  } else if (cue == ShiftCue::DOWN) {
+    u8g2.drawLine(arrowX, 28, arrowX, 54);
+    u8g2.drawTriangle(arrowX, 60, arrowX - 9, 49, arrowX + 9, 49);
+  }
 
   u8g2.setFont(u8g2_font_5x8_tf);
   snprintf(text, sizeof(text), "%.0f", vehicleSpeedKmh);
@@ -327,10 +351,12 @@ void updateSimulator(uint32_t now) {
     simulatedGear = 2;
   } else if (vehicleSpeedKmh < 55.0f) {
     simulatedGear = 3;
-  } else if (vehicleSpeedKmh < 75.0f) {
+  } else if (vehicleSpeedKmh < 65.0f) {
     simulatedGear = 4;
-  } else {
+  } else if (vehicleSpeedKmh < 82.0f) {
     simulatedGear = 5;
+  } else {
+    simulatedGear = 6;
   }
   throttlePercent = 17.0f + (wave + 1.0f) * 25.0f;
   coolantTempC = 89.0f + sinf(elapsedSeconds * 0.035f) * 2.0f;
@@ -357,34 +383,10 @@ void updateSimulator(uint32_t now) {
 }
 
 void updateShiftLeds(uint32_t now) {
-  const float progress = min(1.0f, engineRpm / shiftRpm());
-  uint8_t red = 0;
-  uint8_t green = 0;
-  uint8_t blue = 0;
-
-  if (progress < 0.5f) {
-    green = static_cast<uint8_t>(35.0f + progress * 440.0f);
-  } else if (progress < 0.8f) {
-    red = static_cast<uint8_t>((progress - 0.5f) / 0.3f * 255.0f);
-    green = 255;
-  } else {
-    red = 255;
-    green = static_cast<uint8_t>((1.0f - progress) / 0.2f * 255.0f);
-  }
-
-  const ShiftCue cue = shiftCue();
-  if (cue == ShiftCue::UP && ((now / 180) & 1)) {
-    red = 0;
-    green = 0;
-  } else if (cue == ShiftCue::DOWN) {
-    red = 0;
-    green = 0;
-    blue = ((now / 300) & 1) ? 96 : 0;
-  }
-
-  analogWrite(LED_RED_PIN, red);
-  analogWrite(LED_GREEN_PIN, green);
-  analogWrite(LED_BLUE_PIN, blue);
+  const ShiftLightColor color = shiftLightColor(now);
+  analogWrite(LED_RED_PIN, color.red);
+  analogWrite(LED_GREEN_PIN, color.green);
+  analogWrite(LED_BLUE_PIN, color.blue);
 }
 
 void setup() {
