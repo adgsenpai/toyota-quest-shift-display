@@ -460,23 +460,23 @@ void drawDashboard() {
 
   u8g2.setFont(u8g2_font_5x8_tf);
   snprintf(text, sizeof(text), "%.0f", vehicleSpeedKmh);
-  u8g2.setFont(u8g2_font_logisoso20_tn);
-  u8g2.drawStr(49, 35, text);
+  u8g2.setFont(u8g2_font_logisoso18_tn);
+  u8g2.drawStr(49, 39, text);
   u8g2.setFont(u8g2_font_5x8_tf);
-  u8g2.drawStr(101, 34, "km/h");
+  u8g2.drawStr(101, 39, "km/h");
   snprintf(text, sizeof(text), "RPM %.0f", engineRpm);
-  u8g2.drawStr(51, 45, text);
+  u8g2.drawStr(51, 48, text);
   snprintf(text, sizeof(text), "AVG %.1f L/100", averageFuelLPer100Km);
-  u8g2.drawStr(51, 55, text);
+  u8g2.drawStr(51, 57, text);
 
   const float barProgress = engineRpm / 7000.0f * 9;
   const uint8_t bars = barProgress >= 9 ? 9 : static_cast<uint8_t>(barProgress);
   for (uint8_t i = 0; i < 9; ++i) {
     const int16_t x = 53 + i * 8;
     if (i < bars) {
-      u8g2.drawBox(x, 59, 6, 4);
+      u8g2.drawBox(x, 61, 6, 3);
     } else {
-      u8g2.drawFrame(x, 59, 6, 4);
+      u8g2.drawFrame(x, 61, 6, 3);
     }
   }
   u8g2.sendBuffer();
