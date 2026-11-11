@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
+#include <EEPROM.h>
 #include <U8g2lib.h>
 #include <math.h>
 
@@ -11,6 +12,10 @@ U8G2_SSD1306_128X64_NONAME_F_SW_I2C u8g2(
 constexpr uint8_t LED_GREEN_PIN = 16;  // NodeMCU D0
 constexpr uint8_t LED_BLUE_PIN = 5;    // NodeMCU D1
 constexpr uint8_t LED_RED_PIN = 4;     // NodeMCU D2
+constexpr uint8_t SHIFT_SAMPLE_CAPACITY = 16;
+constexpr uint32_t PERSIST_INTERVAL_MS = 15UL * 60UL * 1000UL;
+constexpr uint32_t PERSIST_MAGIC = 0x51535431UL;
+constexpr uint8_t PERSIST_VERSION = 1;
 constexpr char AP_SSID[] = "Quest-Shift";
 constexpr char AP_PASSWORD[] = "QUEST_ODO";
 constexpr char WEB_USERNAME[] = "quest";
@@ -19,6 +24,28 @@ ESP8266WebServer server(80);
 
 enum class DriveMode : uint8_t { ECO, NORMAL, PERFORMANCE };
 enum class ShiftCue : uint8_t { NONE, UP, DOWN };
+
+struct ShiftSample {
+  uint16_t rpm;
+  uint16_t speedTenthsKmh;
+  uint8_t throttlePercent;
+  uint8_t gear;
+  uint8_t mode;
+  uint8_t cue;
+};
+
+struct PersistentState {
+  uint32_t magic;
+  uint8_t version;
+  uint8_t mode;
+  uint8_t sampleCount;
+  uint8_t sampleHead;
+  float tripDistanceKm;
+  float fuelUsedLitres;
+  uint32_t upshiftEvents;
+  uint32_t downshiftEvents;
+  ShiftSample samples[SHIFT_SAMPLE_CAPACITY];
+};
 
 DriveMode driveMode = DriveMode::NORMAL;
 uint32_t simulatorStartedAt = 0;
@@ -34,6 +61,12 @@ float sessionDistanceKm = 0.0f;
 float fuelUsedLitres = 0.0f;
 float averageFuelLPer100Km = 7.4f;
 float instantFuelLPer100Km = 7.4f;
+PersistentState persistentState{};
+ShiftCue previousShiftCue = ShiftCue::NONE;
+bool persistentStorageReady = false;
+bool persistentStateDirty = false;
+uint32_t lastPersistentSaveAt = 0;
+float lastPersistedDistanceKm = 0.0f;
 
 const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
 <!doctype html>
@@ -59,6 +92,7 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
     .bar:after{content:"";position:absolute;inset:0 auto 0 0;width:var(--rpm);background:#11121466;border-right:2px solid white}
     .ticks{display:flex;justify-content:space-between;color:var(--muted);font-size:.65rem}
     .strip-label{margin-top:17px}.leds{display:flex;gap:8px;align-items:center;margin-top:10px}.led{flex:1;height:12px;border-radius:8px;background:#35363a;box-shadow:inset 0 0 5px #0008}
+    .memory-note{margin-top:10px;color:var(--muted);font-size:.7rem;letter-spacing:.04em}
     .mode-panel{padding:17px 18px}.mode-heading{display:flex;justify-content:space-between;align-items:center}.current-mode{color:var(--red);font-size:.76rem;font-weight:750;letter-spacing:.12em}
     .modes{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:11px}
     button{border:1px solid #414246;background:#242528;color:#b8b8ba;padding:12px 6px;border-radius:9px;font:inherit;font-size:.8rem;font-weight:750;letter-spacing:.06em;cursor:pointer;transition:background .15s,border-color .15s,color .15s}
@@ -95,6 +129,7 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
     <div class="ticks"><span>0</span><span>2k</span><span>4k</span><span>6k</span><span>7k</span></div>
     <div class="label strip-label">RGB SHIFT STRIP · ALL LEDS SAME COLOR</div>
     <div class="leds" id="leds" aria-label="Simulated shift light"><i class="led"></i><i class="led"></i><i class="led"></i><i class="led"></i><i class="led"></i><i class="led"></i><i class="led"></i><i class="led"></i></div>
+    <div class="memory-note" id="memory">ON-BOARD MEMORY · LOADING</div>
   </section>
   <section class="panel mode-panel">
     <div class="mode-heading"><div class="label">DRIVE MODE</div><div class="current-mode" id="modeName">NORMAL</div></div>
@@ -109,7 +144,7 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
     <article class="panel metric"><div class="label">TRIP DISTANCE</div><div class="value"><span id="trip">--</span> km</div></article>
     <article class="panel metric"><div class="label">COOLANT TEMP</div><div class="value"><span id="coolant">--</span> °C</div></article>
   </section>
-  <p class="foot notice">SIMULATED DASHBOARD · No ELM327 connection or vehicle control. Trip and demo values reset on restart.</p>
+  <p class="foot notice">SIMULATED DASHBOARD · No ELM327 connection or vehicle control. Trip totals and mode are remembered; live readings are simulated.</p>
   <p class="foot">Wi-Fi: Quest-Shift · Open <b>192.168.4.1</b> · Login: <b>quest</b> / <b>QUEST_ODO</b></p>
 </main>
 <script>
@@ -140,6 +175,7 @@ async function update(){
       led.style.backgroundColor=stripColor;
       led.style.boxShadow='0 0 12px '+stripColor;
     });
+    $('memory').textContent='ON-BOARD MEMORY · '+d.samples+' SHIFT SAMPLES · ↑ '+d.upshifts+' / ↓ '+d.downshifts;
     buttons.forEach(button=>button.classList.toggle('active',button.dataset.mode===d.mode));
     document.title='Gear '+d.gear+' · Toyota Quest';
   }catch(error){$('connection').textContent='OFFLINE';}
@@ -184,7 +220,7 @@ float shiftRpm() {
 }
 
 ShiftCue shiftCue() {
-  if (engineRpm >= shiftRpm()) return ShiftCue::UP;
+  if (simulatedGear < 6 && engineRpm >= shiftRpm()) return ShiftCue::UP;
   if (simulatedGear > 1 && engineRpm <= 1600.0f) return ShiftCue::DOWN;
   return ShiftCue::NONE;
 }
@@ -221,6 +257,102 @@ ShiftLightColor shiftLightColor(uint32_t now) {
   return color;
 }
 
+static_assert(sizeof(PersistentState) <= 512,
+              "Persistent shift memory must fit in the ESP8266 EEPROM emulation area");
+
+bool savePersistentState(bool force) {
+  if (!persistentStorageReady) return false;
+  if (!force && millis() - lastPersistentSaveAt < PERSIST_INTERVAL_MS) return true;
+  if (!persistentStateDirty && !force) return true;
+
+  persistentState.magic = PERSIST_MAGIC;
+  persistentState.version = PERSIST_VERSION;
+  persistentState.mode = static_cast<uint8_t>(driveMode);
+  persistentState.tripDistanceKm = sessionDistanceKm;
+  persistentState.fuelUsedLitres = fuelUsedLitres;
+  EEPROM.put(0, persistentState);
+  if (!EEPROM.commit()) {
+    Serial.println(F("ERROR: Could not save shift memory to flash"));
+    return false;
+  }
+
+  lastPersistentSaveAt = millis();
+  lastPersistedDistanceKm = sessionDistanceKm;
+  persistentStateDirty = false;
+  return true;
+}
+
+void loadPersistentState() {
+  EEPROM.begin(sizeof(PersistentState));
+
+  PersistentState loaded{};
+  EEPROM.get(0, loaded);
+  const bool valid = loaded.magic == PERSIST_MAGIC &&
+                     loaded.version == PERSIST_VERSION &&
+                     loaded.mode <= static_cast<uint8_t>(DriveMode::PERFORMANCE) &&
+                     loaded.sampleCount <= SHIFT_SAMPLE_CAPACITY &&
+                     loaded.sampleHead < SHIFT_SAMPLE_CAPACITY &&
+                     isfinite(loaded.tripDistanceKm) &&
+                     loaded.tripDistanceKm >= 0.0f &&
+                     loaded.tripDistanceKm < 100000000.0f &&
+                     isfinite(loaded.fuelUsedLitres) &&
+                     loaded.fuelUsedLitres >= 0.0f &&
+                     loaded.fuelUsedLitres < 100000000.0f;
+  if (valid) {
+    persistentState = loaded;
+  } else {
+    persistentState = {};
+    persistentState.magic = PERSIST_MAGIC;
+    persistentState.version = PERSIST_VERSION;
+    persistentState.mode = static_cast<uint8_t>(DriveMode::NORMAL);
+  }
+
+  driveMode = static_cast<DriveMode>(persistentState.mode);
+  sessionDistanceKm = persistentState.tripDistanceKm;
+  fuelUsedLitres = persistentState.fuelUsedLitres;
+  if (sessionDistanceKm > 0.001f) {
+    averageFuelLPer100Km = fuelUsedLitres / sessionDistanceKm * 100.0f;
+  }
+
+  persistentStorageReady = true;
+  lastPersistentSaveAt = millis();
+  lastPersistedDistanceKm = sessionDistanceKm;
+  if (!valid) {
+    persistentStateDirty = true;
+    savePersistentState(true);
+    Serial.println(F("Shift memory initialized"));
+  } else {
+    Serial.println(F("Shift memory restored from flash"));
+  }
+}
+
+void rememberShiftDecision(ShiftCue cue) {
+  if (cue == ShiftCue::NONE || cue == previousShiftCue) return;
+  previousShiftCue = cue;
+  if (cue == ShiftCue::UP && simulatedGear >= 6) return;
+  if (cue == ShiftCue::DOWN && simulatedGear <= 1) return;
+
+  ShiftSample &sample = persistentState.samples[persistentState.sampleHead];
+  sample.rpm = static_cast<uint16_t>(engineRpm);
+  sample.speedTenthsKmh = static_cast<uint16_t>(vehicleSpeedKmh * 10.0f);
+  sample.throttlePercent = static_cast<uint8_t>(throttlePercent);
+  sample.gear = simulatedGear;
+  sample.mode = static_cast<uint8_t>(driveMode);
+  sample.cue = static_cast<uint8_t>(cue);
+
+  persistentState.sampleHead =
+      (persistentState.sampleHead + 1) % SHIFT_SAMPLE_CAPACITY;
+  if (persistentState.sampleCount < SHIFT_SAMPLE_CAPACITY) {
+    ++persistentState.sampleCount;
+  }
+  if (cue == ShiftCue::UP) {
+    ++persistentState.upshiftEvents;
+  } else {
+    ++persistentState.downshiftEvents;
+  }
+  persistentStateDirty = true;
+}
+
 bool requireAuthentication() {
   if (server.authenticate(WEB_USERNAME, WEB_PASSWORD)) return true;
   server.requestAuthentication();
@@ -234,7 +366,7 @@ void handleRoot() {
 
 void handleApi() {
   if (!requireAuthentication()) return;
-  char json[400];
+  char json[448];
   const ShiftCue cue = shiftCue();
   const char *cueName = cue == ShiftCue::UP ? "up" :
                         cue == ShiftCue::DOWN ? "down" : "none";
@@ -243,10 +375,14 @@ void handleApi() {
            "{\"mode\":\"%s\",\"gear\":%u,\"rpm\":%.0f,\"speed\":%.1f,"
            "\"averageFuel\":%.2f,\"instantFuel\":%.2f,"
            "\"trip\":%.3f,\"coolant\":%.1f,\"red\":%u,\"green\":%u,"
-           "\"blue\":%u,\"shift\":\"%s\"}",
+           "\"blue\":%u,\"shift\":\"%s\",\"samples\":%u,"
+           "\"upshifts\":%lu,\"downshifts\":%lu}",
            modeSlug(), simulatedGear, engineRpm, vehicleSpeedKmh,
            averageFuelLPer100Km, instantFuelLPer100Km, sessionDistanceKm,
-           coolantTempC, color.red, color.green, color.blue, cueName);
+           coolantTempC, color.red, color.green, color.blue, cueName,
+           persistentState.sampleCount,
+           static_cast<unsigned long>(persistentState.upshiftEvents),
+           static_cast<unsigned long>(persistentState.downshiftEvents));
   server.send(200, "application/json", json);
 }
 
@@ -269,6 +405,11 @@ void handleMode() {
     return;
   }
 
+  persistentStateDirty = true;
+  if (!savePersistentState(true)) {
+    server.send(500, "text/plain", "Mode changed, but could not save it to flash");
+    return;
+  }
   server.send(200, "text/plain", modeName());
 }
 
@@ -378,8 +519,14 @@ void updateSimulator(uint32_t now) {
     } else {
       averageFuelLPer100Km = instantFuelLPer100Km;
     }
+    if (sessionDistanceKm > lastPersistedDistanceKm) {
+      persistentStateDirty = true;
+    }
     lastSampleAt = now;
   }
+
+  rememberShiftDecision(shiftCue());
+  savePersistentState(false);
 }
 
 void updateShiftLeds(uint32_t now) {
@@ -391,6 +538,7 @@ void updateShiftLeds(uint32_t now) {
 
 void setup() {
   Serial.begin(115200);
+  loadPersistentState();
   u8g2.begin();
   drawBootScreen();
 
