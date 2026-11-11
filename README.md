@@ -15,12 +15,13 @@ An ESP8266-based prototype for a Toyota Quest-inspired dashboard. It simulates a
 - RPM shift-light colors on an analog RGB strip, transitioning green to amber to red. All LEDs on an analog strip always show the same color; individual LED control requires an addressable strip such as WS2812B/NeoPixel.
 - On-chip flash memory remembers the selected mode, trip/fuel totals, and the most recent 16 simulated shift-decision samples across restarts.
 - Bounded shift recommendations: never suggest an upshift above 6th gear or a downshift below 1st.
-- Monochrome OLED boot screen and live dashboard.
+- Two-tone OLED layout: Toyota emblem and header are kept in the yellow top band; gear, shift arrow, and live readings stay in the blue area.
 - Local Wi-Fi access point and HTTP Basic Authentication.
 
 ## Hardware and pins
 
 - ESP8266 NodeMCU / HW-364-style board with SSD1306 128x64 OLED.
+- The OLED's yellow top band is 16 pixels high; the dashboard positions its logo/header and blue-band driving data to respect this physical color split.
 - OLED software-I²C clock: GPIO14; data: GPIO12.
 - Analog RGB strip color channels: green to GPIO16 (NodeMCU D0), blue to GPIO5 (D1), red to GPIO4 (D2). The dashboard represents the strip LEDs in a single uniform color to match the hardware.
 - Drive each strip channel through a suitable transistor/MOSFET driver; never connect a strip's power or channel current directly to ESP8266 GPIO pins. Use an appropriately rated external strip supply and connect its ground to board ground.

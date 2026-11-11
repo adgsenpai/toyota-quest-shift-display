@@ -414,14 +414,15 @@ void handleMode() {
 }
 
 void drawToyotaLogo(uint8_t centerX, uint8_t centerY) {
-  u8g2.drawEllipse(centerX, centerY, 14, 9);
-  u8g2.drawEllipse(centerX, centerY, 4, 8);
-  u8g2.drawEllipse(centerX, centerY, 10, 3);
+  // Keep the full emblem inside the OLED's yellow top 16-pixel band.
+  u8g2.drawEllipse(centerX, centerY, 14, 6);
+  u8g2.drawEllipse(centerX, centerY, 4, 5);
+  u8g2.drawEllipse(centerX, centerY, 10, 2);
 }
 
 void drawBootScreen() {
   u8g2.clearBuffer();
-  drawToyotaLogo(64, 14);
+  drawToyotaLogo(64, 8);
   u8g2.setFont(u8g2_font_7x14B_tf);
   u8g2.drawStr(22, 35, "TOYOTA");
   u8g2.setFont(u8g2_font_5x8_tf);
@@ -440,20 +441,20 @@ void drawDashboard() {
   u8g2.drawStr(2, 8, "TOYOTA");
   u8g2.drawStr(38, 8, "QUEST 1.6L");
   u8g2.drawStr(90, 8, modeName());
-  u8g2.drawHLine(0, 11, 128);
+  u8g2.drawHLine(0, 15, 128);
 
-  u8g2.drawStr(3, 21, "GEAR");
+  u8g2.drawStr(3, 24, "GEAR");
   const ShiftCue cue = shiftCue();
   snprintf(text, sizeof(text), "%u", simulatedGear);
   u8g2.setFont(u8g2_font_logisoso32_tn);
   u8g2.drawStr(2, 60, text);
   const int16_t arrowX = 32;
   if (cue == ShiftCue::UP) {
-    u8g2.drawLine(arrowX, 57, arrowX, 31);
-    u8g2.drawTriangle(arrowX, 25, arrowX - 9, 36, arrowX + 9, 36);
+    u8g2.drawLine(arrowX, 57, arrowX, 35);
+    u8g2.drawTriangle(arrowX, 27, arrowX - 9, 38, arrowX + 9, 38);
   } else if (cue == ShiftCue::DOWN) {
-    u8g2.drawLine(arrowX, 28, arrowX, 54);
-    u8g2.drawTriangle(arrowX, 60, arrowX - 9, 49, arrowX + 9, 49);
+    u8g2.drawLine(arrowX, 34, arrowX, 54);
+    u8g2.drawTriangle(arrowX, 61, arrowX - 9, 50, arrowX + 9, 50);
   }
 
   u8g2.setFont(u8g2_font_5x8_tf);
